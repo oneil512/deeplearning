@@ -13,12 +13,12 @@ class feedforward:
         weights = []
         bias = []
         for index, i in enumerate(dim[:-1]):
-            bias.append(np.random.rand(dim[index + 1]))
             weights.append(np.random.rand(dim[index + 1], i))
+        for i in dim[1:-1]:
+            bias.append(np.random.rand(i))
         self.bias = bias
         self.weights = weights
 
-    # x is np array
     def train(self, x):
         cur = x
         self.activations.append(cur)
@@ -29,6 +29,7 @@ class feedforward:
             self.activations.append(cur)
         cur = np.matmul(self.weights[-1], cur)
         res = self.softMax(cur)
+        print('activations', self.activations)
         return res
 
     # v is a np vector
@@ -48,36 +49,61 @@ class feedforward:
         return self.loss
 
     def bProp(self, loss, gt, predict):
-        updates = []
-        updates.append(self.gradDescSoftLog(self.weights[-1], gt, self.activations[-1]))
+        w_updates = []
+        b_updates = []
+        softLogUpdates = self.gradDescSoftLog(self.weights[-1], self.bias[-1], gt, self.activations[-1])
+
+        w_updates.append(softLogUpdates[0])
+        b_updates.append(softLogUpdates[1])
         for index, weight in enumerate(reversed(self.weights[:-1])):
-            updates.append(self.gradDesc(weight, updates[-1], self.activations[-(index + 1)], self.outputs[-(index + 1)]))
-        for i, update in enumerate(reversed(updates)):
+            updates = self.gradWDesc(weight, w_updates[-1], self.activations[-(index + 2)], self.outputs[-(index + 1)])
+            w_updates.append(updates)
+
+        for index, bias in enumerate(reversed(self.bias[:-1])):
+            updates = self.gradBDesc(bias, w_updates[-1], self.activations[-(index + 2)])
+            b_updates.append(updates)
+
+        for i, update in enumerate(reversed(w_updates)):
             self.updateWeights(self.weights[i], update)
 
+        for i, update in enumerate(reversed(b_updates)):
+            self.updateBias(self.bias[i], update)
 
-    def gradDesc(self, weight, prevGrads, activations, outputs):
+
+    def gradWDesc(self, weight, prevGrads, activations, outputs):
         w_gradients = np.empty(shape=weight.shape)
-        b_gradients = np.empty(shape=weight.shape)
-        m_sum = np.sum(prevGrads, axis=0)
+        w_sum = np.sum(prevGrads, axis=0)
         for i_index, i in enumerate(w_gradients):
             for j_index, j in enumerate(i):
-                d_activation = activations[i_index] if activations[i_index] > 0 else activations[i_index] * self.leak
-                j = d_activation * m_sum[i_index] * outputs[i_index]
+                d_activation = activations[j_index] if activations[j_index] > 0 else activations[j_index] * self.leak
+                j = d_activation * w_sum[i_index] * outputs[i_index]
         return w_gradients
+
+    def gradBDesc(self, bias, prevGrads, activations):
+        b_gradients = np.empty(shape=bias.shape)
+        w_sum = np.sum(prevGrads, axis=0)
+        for i_index, i in enumerate(b_gradients):
+                d_activation = activations[i_index] if activations[i_index] > 0 else activations[i_index] * self.leak
+                i = d_activation * w_sum[i_index]
+        return b_gradients
+
+    def updateBias(self, bias, updates):
+        for i_index, i in enumerate(updates):
+                bias[i_index] += self.learningRate * i
 
     def updateWeights(self, weights, updates):
         for i_index, i in enumerate(updates):
             for j_index, j in enumerate(i):
                 weights[i_index][j_index] += self.learningRate * j
 
-
-    def gradDescSoftLog(self, weight, gt, activations):
+    def gradDescSoftLog(self, weight, bias, gt, activations):
         w_gradients = np.empty(shape=weight.shape)
+        b_gradients = np.empty(shape=bias.shape)
         for i_index, i in enumerate(w_gradients):
             for j_index, j in enumerate(i):
                 j = (self.softmax[i_index] - gt[i_index]) * activations[j_index]
-        return w_gradients
+                b_gradients[i_index] = (self.softmax[i_index] - gt[i_index])
+        return (w_gradients, b_gradients)
 
     def printShape(self):
         for weight in self.weights:
@@ -85,10 +111,11 @@ class feedforward:
         for i in self.bias:
             print(i.shape)
 
-shape = [6, 4, 2]
+shape = [12, 8, 6, 4, 2]
 net = feedforward(shape)
 print('prior weights', net.weights)
-x = np.random.rand(6)
+print('prior bias', net.bias)
+x = np.random.rand(12)
 y = np.array([1,0])
 print('train data', x)
 print('gt', y)
@@ -96,3 +123,4 @@ res = net.train(x)
 loss = net.logLoss(y, res)
 net.bProp(loss, y, res)
 print('post weights', net.weights)
+print('post bias', net.bias)
